@@ -278,7 +278,7 @@ tables! {
 
     /// Stores the block number corresponding to a header.
     table HeaderNumbers<Key = BlockHash, Value = BlockNumber>;
-
+    
     /// Stores header bodies.
     table Headers<Key = BlockNumber, Value = Header>;
 

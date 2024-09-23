@@ -72,7 +72,7 @@ pub trait BlockIdReader: BlockNumReader + Send + Sync {
         };
         Ok(Some(num))
     }
-
+    
     /// Get the hash of the block by matching the given id.
     fn block_hash_for_id(&self, block_id: BlockId) -> ProviderResult<Option<B256>> {
         match block_id {

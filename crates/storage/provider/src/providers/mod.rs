@@ -319,7 +319,7 @@ impl<N: ProviderNodeTypes> BlockReader for BlockchainProvider<N> {
     fn ommers(&self, id: BlockHashOrNumber) -> ProviderResult<Option<Vec<Header>>> {
         self.database.ommers(id)
     }
-
+    
     fn block_body_indices(
         &self,
         number: BlockNumber,

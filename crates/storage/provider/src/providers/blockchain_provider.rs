@@ -745,7 +745,7 @@ impl<N: ProviderNodeTypes> TransactionsProvider for BlockchainProvider2<N> {
             .and_then(|(block_state, _)| block_state)
             .map(|block_state| block_state.block().block().number))
     }
-
+    
     fn transactions_by_block(
         &self,
         id: BlockHashOrNumber,
@@ -1288,7 +1288,7 @@ where
             }
         }
     }
-
+    
     fn sealed_header_by_id(&self, id: BlockId) -> ProviderResult<Option<SealedHeader>> {
         Ok(match id {
             BlockId::Number(num) => self.sealed_header_by_number_or_tag(num)?,

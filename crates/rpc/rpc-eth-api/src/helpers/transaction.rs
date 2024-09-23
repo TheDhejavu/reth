@@ -6,9 +6,9 @@ use alloy_primitives::{Address, Bytes, TxHash, TxKind, B256, U256};
 use alloy_rpc_types_eth::transaction::TransactionRequest;
 use futures::Future;
 use reth_primitives::{
-    BlockId, Receipt, SealedBlockWithSenders, TransactionMeta, TransactionSigned,
+    BlockId, Receipt, SealedBlockWithSenders, TransactionMeta, TransactionSigned, TransactionSignedEcRecovered
 };
-use reth_provider::{BlockNumReader, BlockReaderIdExt, ReceiptProvider, TransactionsProvider};
+use reth_provider::{BlockNumReader, BlockReader, BlockReaderIdExt, ReceiptProvider, TransactionsProvider};
 use reth_rpc_eth_types::{
     utils::{binary_search, recover_raw_transaction},
     EthApiError, EthStateCache, SignError, TransactionSource,
@@ -192,32 +192,69 @@ pub trait EthTransactions: LoadTransaction {
         index: usize,
     ) -> impl Future<Output = Result<Option<RpcTransaction<Self::NetworkTypes>>, Self::Error>> + Send
     where
-        Self: LoadBlock,
+        Self: LoadBlock
     {
         async move {
-            if let Some(block) = self.block_with_senders(block_id).await? {
-                let block_hash = block.hash();
-                let block_number = block.number;
-                let base_fee_per_gas = block.base_fee_per_gas;
-                if let Some(tx) = block.into_transactions_ecrecovered().nth(index) {
-                    let tx_info = TransactionInfo {
-                        hash: Some(tx.hash()),
-                        block_hash: Some(block_hash),
-                        block_number: Some(block_number),
-                        base_fee: base_fee_per_gas.map(u128::from),
-                        index: Some(index as u64),
-                    };
+            // Idea?
+            // 1. Get the block header because it includes just the summary of the block.
+            //   a.) Check if block is pending, if yes get the block header only
+            //   b.) If No, Get block header from database.
+            // 2. Get the specific transaction using the transaction index
 
-                    return Ok(Some(from_recovered_with_block_context::<Self::TransactionCompat>(
-                        tx, tx_info,
-                    )))
-                }
-            }
+            // Get the block header
+            let sealed_header = if block_id.is_pending() {
+                LoadPendingBlock::provider(self)
+                    .sealed_header_by_id(block_id)
+                    .map_err(Self::Error::from_eth_err)?
+            } else {
+                LoadBlock::provider(self)
+                    .sealed_header_by_id(block_id)
+                    .map_err(Self::Error::from_eth_err)?
+            };
 
-            Ok(None)
+            let Some(header) = sealed_header else { return Ok(None) };
+
+            // Get block body indices
+            let block_body_indices = LoadBlock::provider(self)
+                .block_body_indices(header.number)
+                .map_err(Self::Error::from_eth_err)?;
+
+            let Some(indices) = block_body_indices else { return Ok(None) };
+
+            let Some(tx_number) = indices.tx_number_at_index(index) else { return Ok(None) };
+
+            // Fetch the specific transaction
+            let transaction = LoadTransaction::provider(self)
+                .transaction_by_id(tx_number)
+                .map_err(Self::Error::from_eth_err)?;
+
+            let Some(tx) = transaction else { return Ok(None) };
+
+            // Get transaction sender
+            let sender = LoadTransaction::provider(self)
+                .transaction_sender(tx_number)
+                .map_err(Self::Error::from_eth_err)?;
+
+            let Some(sender) = sender else { return Ok(None) };
+
+            // Create transaction info
+            let tx_info = TransactionInfo {
+                hash: Some(tx.hash()),
+                block_hash: Some(header.hash()),
+                block_number: Some(header.number),
+                base_fee: header.base_fee_per_gas.map(u128::from),
+                index: Some(index as u64),
+            };
+
+            // Create and return the RPC transaction
+            let transaction_signed_ecrecovered = TransactionSignedEcRecovered::from_signed_transaction(tx, sender);
+            Ok(Some(from_recovered_with_block_context::<Self::TransactionCompat>(
+                transaction_signed_ecrecovered,
+                tx_info,
+            )))
         }
     }
-
+    
     /// Find a transaction by sender's address and nonce.
     fn get_transaction_by_sender_and_nonce(
         &self,
@@ -228,6 +265,7 @@ pub trait EthTransactions: LoadTransaction {
     where
         Self: LoadBlock + LoadState + FullEthApiTypes,
     {
+    
         async move {
             // Check the pool first
             if include_pending {

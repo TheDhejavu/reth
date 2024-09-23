@@ -65,6 +65,11 @@ impl StoredBlockBodyIndices {
     pub const fn tx_count(&self) -> NumTransactions {
         self.tx_count
     }
+
+    /// Get the transaction number at a specific index
+    pub fn tx_number_at_index(&self, index: usize) -> Option<TxNumber> {
+        self.tx_num_range().nth(index)
+    }
 }
 
 /// The storage representation of block withdrawals.

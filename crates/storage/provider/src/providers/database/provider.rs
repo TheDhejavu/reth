@@ -421,7 +421,7 @@ impl<TX: DbTx, Spec: Send + Sync> DatabaseProvider<TX, Spec> {
             |_| true,
         )
     }
-
+    
     fn block_with_senders<H, HF, B, BF>(
         &self,
         id: BlockHashOrNumber,
